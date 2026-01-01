@@ -1,21 +1,89 @@
 """3-stage LLM Council orchestration."""
 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from .openrouter import query_models_parallel, query_model
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .services.document_storage import DocumentStorage
+from .services.context_manager import ContextManager, DocumentContext
+
+# Service instances for document context
+_document_storage = DocumentStorage()
+_context_manager = ContextManager()
 
 
-async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
+async def _get_document_context(conversation_id: Optional[str]) -> str:
+    """
+    Load documents for a conversation and prepare context for injection.
+
+    Args:
+        conversation_id: The conversation ID to load documents for
+
+    Returns:
+        Formatted context string to prepend to prompts, or empty string
+    """
+    if not conversation_id:
+        return ""
+
+    try:
+        documents = await _document_storage.list_documents(conversation_id)
+        if not documents:
+            return ""
+
+        # Load extracted text for each document
+        doc_contexts = []
+        for doc in documents:
+            text = await _document_storage.get_extracted_text(
+                conversation_id,
+                doc.id
+            )
+            if text:
+                doc_contexts.append(DocumentContext(
+                    document_id=doc.id,
+                    filename=doc.original_filename,
+                    text=text,
+                    token_count=doc.token_count
+                ))
+
+        if not doc_contexts:
+            return ""
+
+        # Prepare context with token budgeting
+        injection = _context_manager.prepare_context(doc_contexts)
+
+        if injection.overflow_warning:
+            print(f"[Context] {injection.overflow_warning}")
+
+        return injection.formatted_context
+
+    except Exception as e:
+        print(f"[Context] Error loading documents: {e}")
+        return ""
+
+
+async def stage1_collect_responses(
+    user_query: str,
+    conversation_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
     Args:
         user_query: The user's question
+        conversation_id: Optional conversation ID for document context
 
     Returns:
         List of dicts with 'model' and 'response' keys
     """
-    messages = [{"role": "user", "content": user_query}]
+    # Get document context if available
+    document_context = await _get_document_context(conversation_id)
+
+    # Build the full query with context
+    if document_context:
+        full_query = document_context + user_query
+    else:
+        full_query = user_query
+
+    messages = [{"role": "user", "content": full_query}]
 
     # Query all models in parallel
     responses = await query_models_parallel(COUNCIL_MODELS, messages)
@@ -293,18 +361,22 @@ Title:"""
     return title
 
 
-async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
+async def run_full_council(
+    user_query: str,
+    conversation_id: Optional[str] = None
+) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
 
     Args:
         user_query: The user's question
+        conversation_id: Optional conversation ID for document context
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
     """
-    # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query)
+    # Stage 1: Collect individual responses (with document context if available)
+    stage1_results = await stage1_collect_responses(user_query, conversation_id)
 
     # If no models responded successfully, return error
     if not stage1_results:

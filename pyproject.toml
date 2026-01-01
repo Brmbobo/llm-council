@@ -10,4 +10,11 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "httpx>=0.27.0",
     "pydantic>=2.9.0",
+    # Document upload dependencies
+    "python-multipart>=0.0.9",    # Required by FastAPI for file uploads
+    "pymupdf>=1.24.0",            # PDF text extraction
+    "python-magic-bin>=0.4.14",   # MIME validation (Windows compatible)
+    "tiktoken>=0.7.0",            # Token counting
+    "aiofiles>=24.1.0",           # Async file I/O
+    "chardet>=5.2.0",             # Encoding detection
 ]

@@ -3,6 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import { DocumentUpload } from './DocumentUpload';
+import { DocumentList } from './DocumentList';
 import './ChatInterface.css';
 
 export default function ChatInterface({
@@ -11,7 +13,13 @@ export default function ChatInterface({
   isLoading,
 }) {
   const [input, setInput] = useState('');
+  const [documentRefresh, setDocumentRefresh] = useState(0);
   const messagesEndRef = useRef(null);
+
+  const handleDocumentUpload = (result) => {
+    // Trigger refresh of document list
+    setDocumentRefresh(prev => prev + 1);
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -121,24 +129,38 @@ export default function ChatInterface({
       </div>
 
       {conversation.messages.length === 0 && (
-        <form className="input-form" onSubmit={handleSubmit}>
-          <textarea
-            className="message-input"
-            placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isLoading}
-            rows={3}
-          />
-          <button
-            type="submit"
-            className="send-button"
-            disabled={!input.trim() || isLoading}
-          >
-            Send
-          </button>
-        </form>
+        <div className="input-section">
+          <div className="documents-section">
+            <DocumentList
+              conversationId={conversation.id}
+              refreshTrigger={documentRefresh}
+            />
+            <DocumentUpload
+              conversationId={conversation.id}
+              onUploadComplete={handleDocumentUpload}
+              disabled={isLoading}
+            />
+          </div>
+
+          <form className="input-form" onSubmit={handleSubmit}>
+            <textarea
+              className="message-input"
+              placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isLoading}
+              rows={3}
+            />
+            <button
+              type="submit"
+              className="send-button"
+              disabled={!input.trim() || isLoading}
+            >
+              Send
+            </button>
+          </form>
+        </div>
       )}
     </div>
   );
