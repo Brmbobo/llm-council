@@ -73,8 +73,8 @@
 
 .stage-loading {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 16px;
   margin: 12px 0;
   background: #f9fafb;
@@ -83,6 +83,25 @@
   color: #666;
   font-size: 14px;
   font-style: italic;
+}
+
+.stage-loading > span:first-of-type {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stage-loading.enhanced {
+  background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
+  border-color: #bfdbfe;
+}
+
+.progress-detail {
+  font-size: 12px;
+  color: #4a90e2;
+  padding-left: 32px;
+  font-style: normal;
+  font-family: monospace;
 }
 
 .spinner {

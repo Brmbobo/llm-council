@@ -68,3 +68,55 @@ The user has provided the following reference documents. Use this information to
 </user_documents>
 
 """
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AGENT PAIR ORCHESTRATION CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Agent pairs for parallel execution (Creator, Critic)
+# Each pair runs independently and concurrently
+AGENT_PAIRS: list[dict[str, str]] = [
+    {
+        "name": "Pair Alpha",
+        "creator": "google/gemini-3-flash-preview",
+        "critic": "mistralai/devstral-2512:free",
+    },
+    {
+        "name": "Pair Beta",
+        "creator": "minimax/minimax-m2",
+        "critic": "xiaomi/mimo-v2-flash:free",
+    },
+]
+
+# Tester model for validation (high-context reasoning model)
+TESTER_MODEL: str = "x-ai/grok-4-1-fast-reasoning"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ORCHESTRATION SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Iteration limits
+MAX_REFINEMENT_ITERATIONS: int = 5           # Dôkladná stratégia - max iterations per pair
+CONVERGENCE_THRESHOLD: float = 0.95          # Stop when critic score >= 95%
+
+# Parallel execution
+PARALLEL_PAIRS_ENABLED: bool = True          # Run pairs concurrently
+
+# Auto-fix on validation failure
+AUTO_FIX_ON_VALIDATION_FAIL: bool = True     # Tester fail → feedback back to pair
+MAX_VALIDATION_RETRIES: int = 2              # Max auto-fix attempts
+
+# Timeout settings (milliseconds)
+CREATOR_TIMEOUT_MS: int = 120_000            # 2 minutes for creator
+CRITIC_TIMEOUT_MS: int = 90_000              # 1.5 minutes for critic
+TESTER_TIMEOUT_MS: int = 120_000             # 2 minutes for tester
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# UI TRANSPARENCY SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Full transparency mode - shows all iterations, scores, and raw feedback
+SHOW_ALL_ITERATIONS: bool = True
+SHOW_RAW_FEEDBACK: bool = True
+SHOW_ALL_SCORES: bool = True
+SHOW_TIMING_INFO: bool = True

@@ -112,4 +112,105 @@ export const api = {
       }
     }
   },
+
+  /**
+   * Send a message using enhanced 4-stage council (Agent Pairs + Tester).
+   * @param {string} conversationId - The conversation ID
+   * @param {string} content - The message content
+   * @returns {Promise<Object>} The complete result with all stages
+   */
+  async sendMessageEnhanced(conversationId, content) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/message/enhanced`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content }),
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to send enhanced message');
+    }
+    return response.json();
+  },
+
+  /**
+   * Send a message using enhanced 4-stage council with streaming updates.
+   *
+   * Event types:
+   * - pairs_start: Starting parallel agent pairs
+   * - pair_iteration: Each Creator-Critic iteration
+   * - pairs_complete: All pairs finished
+   * - validation_start: Starting Tester validation
+   * - validation_progress: Each pair validation result
+   * - validation_complete: All validations done
+   * - rankings_start: Starting peer rankings
+   * - rankings_complete: Rankings done
+   * - synthesis_start: Chairman starting
+   * - synthesis_complete: Final answer ready
+   * - title_complete: Title generated
+   * - complete: All done with full result
+   * - error: Error occurred
+   *
+   * @param {string} conversationId - The conversation ID
+   * @param {string} content - The message content
+   * @param {function} onEvent - Callback function for each event: (eventType, eventData) => void
+   * @returns {Promise<void>}
+   */
+  async sendMessageEnhancedStream(conversationId, content, onEvent) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/message/enhanced/stream`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to send enhanced message');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+
+      // Keep the last potentially incomplete line in the buffer
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          try {
+            const event = JSON.parse(data);
+            onEvent(event.type, event);
+          } catch (e) {
+            console.error('Failed to parse SSE event:', e);
+          }
+        }
+      }
+    }
+
+    // Process any remaining data in buffer
+    if (buffer.startsWith('data: ')) {
+      const data = buffer.slice(6);
+      try {
+        const event = JSON.parse(data);
+        onEvent(event.type, event);
+      } catch (e) {
+        // Ignore incomplete data
+      }
+    }
+  },
 };

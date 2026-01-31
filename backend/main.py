@@ -10,7 +10,15 @@ import json
 import asyncio
 
 from . import storage
-from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .council import (
+    run_full_council,
+    run_enhanced_council,
+    generate_conversation_title,
+    stage1_collect_responses,
+    stage2_collect_rankings,
+    stage3_synthesize_final,
+    calculate_aggregate_rankings
+)
 from .routers.documents import router as documents_router
 
 app = FastAPI(title="LLM Council API")
@@ -187,6 +195,147 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
         except Exception as e:
             # Send error event
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+@app.post("/api/conversations/{conversation_id}/message/enhanced")
+async def send_message_enhanced(conversation_id: str, request: SendMessageRequest):
+    """
+    Send a message and run the enhanced 4-stage council process with Agent Pairs.
+
+    Returns the complete response with all stages including pair iterations,
+    validation results, and auto-fix history.
+    """
+    # Check if conversation exists
+    conversation = storage.get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Check if this is the first message
+    is_first_message = len(conversation["messages"]) == 0
+
+    # Add user message
+    storage.add_user_message(conversation_id, request.content)
+
+    # If this is the first message, generate a title
+    if is_first_message:
+        title = await generate_conversation_title(request.content)
+        storage.update_conversation_title(conversation_id, title)
+
+    # Run the enhanced 4-stage council process
+    result = await run_enhanced_council(request.content, conversation_id)
+
+    # Store simplified version for persistence
+    storage.add_assistant_message(
+        conversation_id,
+        [{"model": r["pair_name"], "response": r["final_response"]} for r in result["stage_pairs"]],
+        result["stage_rankings"],
+        result["stage_synthesis"]
+    )
+
+    return result
+
+
+@app.post("/api/conversations/{conversation_id}/message/enhanced/stream")
+async def send_message_enhanced_stream(conversation_id: str, request: SendMessageRequest):
+    """
+    Send a message and stream the enhanced 4-stage council process.
+
+    Returns Server-Sent Events for real-time progress updates:
+    - pairs_start: Starting parallel agent pairs
+    - pair_iteration: Each Creator-Critic iteration
+    - pairs_complete: All pairs finished
+    - validation_start: Starting Tester validation
+    - validation_progress: Each pair validation result
+    - validation_complete: All validations done
+    - rankings_start: Starting peer rankings
+    - rankings_complete: Rankings done
+    - synthesis_start: Chairman starting
+    - synthesis_complete: Final answer ready
+    - complete: All done
+    - error: Error occurred
+    """
+    # Check if conversation exists
+    conversation = storage.get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Check if this is the first message
+    is_first_message = len(conversation["messages"]) == 0
+
+    async def event_generator():
+        try:
+            # Add user message
+            storage.add_user_message(conversation_id, request.content)
+
+            # Start title generation in parallel
+            title_task = None
+            if is_first_message:
+                title_task = asyncio.create_task(generate_conversation_title(request.content))
+
+            # Progress callback for SSE
+            async def on_progress(event: Dict[str, Any]):
+                yield f"data: {json.dumps(event)}\n\n"
+
+            # We need to collect events and yield them
+            events_queue = asyncio.Queue()
+
+            async def queue_progress(event: Dict[str, Any]):
+                await events_queue.put(event)
+
+            # Run enhanced council in background
+            async def run_council():
+                return await run_enhanced_council(
+                    request.content,
+                    conversation_id,
+                    on_progress=queue_progress
+                )
+
+            council_task = asyncio.create_task(run_council())
+
+            # Yield events as they come
+            while not council_task.done():
+                try:
+                    event = await asyncio.wait_for(events_queue.get(), timeout=0.1)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    continue
+
+            # Get remaining events
+            while not events_queue.empty():
+                event = await events_queue.get()
+                yield f"data: {json.dumps(event)}\n\n"
+
+            # Get final result
+            result = council_task.result()
+
+            # Wait for title generation
+            if title_task:
+                title = await title_task
+                storage.update_conversation_title(conversation_id, title)
+                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+
+            # Store result
+            storage.add_assistant_message(
+                conversation_id,
+                [{"model": r["pair_name"], "response": r["final_response"]} for r in result["stage_pairs"]],
+                result["stage_rankings"],
+                result["stage_synthesis"]
+            )
+
+            # Send final complete event with full data
+            yield f"data: {json.dumps({'type': 'complete', 'data': result})}\n\n"
+
+        except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(

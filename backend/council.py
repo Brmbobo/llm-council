@@ -1,8 +1,8 @@
-"""3-stage LLM Council orchestration."""
+"""3-stage LLM Council orchestration with enhanced Agent Pair support."""
 
 from typing import List, Dict, Any, Tuple, Optional
 from .openrouter import query_models_parallel, query_model
-from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .config import COUNCIL_MODELS, CHAIRMAN_MODEL, AGENT_PAIRS
 from .services.document_storage import DocumentStorage
 from .services.context_manager import ContextManager, DocumentContext
 
@@ -405,3 +405,303 @@ async def run_full_council(
     }
 
     return stage1_results, stage2_results, stage3_result, metadata
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENHANCED COUNCIL WITH AGENT PAIRS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def run_enhanced_council(
+    user_query: str,
+    conversation_id: Optional[str] = None,
+    on_progress: Optional[callable] = None
+) -> Dict[str, Any]:
+    """
+    Run the enhanced 4-stage council process with Agent Pairs.
+
+    Stage 1: Parallel Agent Pairs (Creator-Critic iterative refinement)
+    Stage 2: Tester Validation + Auto-Fix
+    Stage 3: Peer Rankings (anonymized)
+    Stage 4: Chairman Synthesis
+
+    Args:
+        user_query: The user's question
+        conversation_id: Optional conversation ID for document context
+        on_progress: Optional callback for streaming progress updates
+
+    Returns:
+        Dict with all stages and metadata:
+        {
+            "stage_pairs": [...],      # Results from all pairs
+            "stage_validation": {...}, # Validation results
+            "stage_rankings": [...],   # Peer rankings
+            "stage_synthesis": {...},  # Final synthesis
+            "metadata": {...}          # Additional info
+        }
+    """
+    from .agent_pair import run_pairs_parallel, pair_result_to_dict
+    from .validator import validate_all_pairs, aggregated_validation_to_dict
+
+    # Get document context
+    document_context = await _get_document_context(conversation_id)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STAGE 1: Run Agent Pairs in Parallel
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    if on_progress:
+        await on_progress({
+            "type": "pairs_start",
+            "data": {"pairs": [p["name"] for p in AGENT_PAIRS]}
+        })
+
+    # Callback for pair iterations
+    async def on_pair_iteration(pair_name: str, iteration):
+        if on_progress:
+            await on_progress({
+                "type": "pair_iteration",
+                "data": {
+                    "pair": pair_name,
+                    "iteration": iteration.iteration_number,
+                    "score": iteration.critic_score,
+                    "status": iteration.status.value
+                }
+            })
+
+    pair_results = await run_pairs_parallel(
+        pairs=AGENT_PAIRS,
+        query=user_query,
+        context=document_context,
+        on_iteration=on_pair_iteration
+    )
+
+    if on_progress:
+        await on_progress({
+            "type": "pairs_complete",
+            "data": {
+                "pairs": [
+                    {
+                        "name": r.pair_name,
+                        "converged": r.converged,
+                        "iterations": r.total_iterations,
+                        "final_score": r.final_score
+                    }
+                    for r in pair_results
+                ]
+            }
+        })
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STAGE 2: Tester Validation + Auto-Fix
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    if on_progress:
+        await on_progress({"type": "validation_start"})
+
+    # Callback for validation progress
+    async def on_validation_progress(result):
+        if on_progress:
+            await on_progress({
+                "type": "validation_progress",
+                "data": {
+                    "pair": result.pair_name,
+                    "passed": result.passed,
+                    "score": result.final_scores.overall,
+                    "auto_fix_attempts": len(result.auto_fix_attempts)
+                }
+            })
+
+    validation_results = await validate_all_pairs(
+        query=user_query,
+        pair_results=pair_results,
+        on_progress=on_validation_progress
+    )
+
+    if on_progress:
+        await on_progress({
+            "type": "validation_complete",
+            "data": {
+                "best_pair": validation_results.best_pair,
+                "best_score": validation_results.best_score,
+                "all_passed": validation_results.all_passed,
+                "recommendation": validation_results.recommendation
+            }
+        })
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STAGE 3: Peer Rankings (using validated responses)
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    if on_progress:
+        await on_progress({"type": "rankings_start"})
+
+    # Create stage1-like results from validated pair outputs for ranking
+    stage1_like_results = []
+    for val_result in validation_results.results:
+        if val_result.final_response:
+            stage1_like_results.append({
+                "model": val_result.pair_name,
+                "response": val_result.final_response
+            })
+
+    # Run peer rankings if we have responses
+    stage2_rankings = []
+    label_to_model = {}
+    aggregate_rankings = []
+
+    if stage1_like_results:
+        stage2_rankings, label_to_model = await stage2_collect_rankings(
+            user_query,
+            stage1_like_results
+        )
+        aggregate_rankings = calculate_aggregate_rankings(stage2_rankings, label_to_model)
+
+    if on_progress:
+        await on_progress({
+            "type": "rankings_complete",
+            "data": {
+                "aggregate": aggregate_rankings
+            }
+        })
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STAGE 4: Chairman Synthesis
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    if on_progress:
+        await on_progress({"type": "synthesis_start"})
+
+    # Build comprehensive chairman prompt with pair history
+    synthesis_result = await _synthesize_with_pair_context(
+        user_query=user_query,
+        pair_results=pair_results,
+        validation_results=validation_results,
+        stage2_rankings=stage2_rankings
+    )
+
+    if on_progress:
+        await on_progress({
+            "type": "synthesis_complete",
+            "data": synthesis_result
+        })
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Build Final Response
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    return {
+        "stage_pairs": [pair_result_to_dict(r) for r in pair_results],
+        "stage_validation": aggregated_validation_to_dict(validation_results),
+        "stage_rankings": stage2_rankings,
+        "stage_synthesis": synthesis_result,
+        "metadata": {
+            "label_to_model": label_to_model,
+            "aggregate_rankings": aggregate_rankings,
+            "best_pair": validation_results.best_pair,
+            "all_passed": validation_results.all_passed
+        }
+    }
+
+
+async def _synthesize_with_pair_context(
+    user_query: str,
+    pair_results: List,
+    validation_results,
+    stage2_rankings: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    Chairman synthesis with full pair context including iterations and fixes.
+
+    Provides Chairman with complete visibility into the deliberation process.
+    """
+    # Build pair summaries
+    pair_summaries = []
+    for pr in pair_results:
+        summary = f"""
+=== {pr.pair_name} ===
+Creator: {pr.creator_model}
+Critic: {pr.critic_model}
+Iterations: {pr.total_iterations}
+Converged: {pr.converged}
+Final Score: {pr.final_score:.2f}
+
+Final Response:
+{pr.final_response[:2000]}{"..." if len(pr.final_response) > 2000 else ""}
+"""
+        pair_summaries.append(summary)
+
+    # Build validation summaries
+    validation_summaries = []
+    for vr in validation_results.results:
+        fix_info = ""
+        if vr.auto_fix_attempts:
+            fix_info = f"\nAuto-Fix Attempts: {len(vr.auto_fix_attempts)}"
+            for attempt in vr.auto_fix_attempts:
+                fix_info += f"\n  - Attempt {attempt.attempt_number}: Score {attempt.retest_score:.2f} ({'PASS' if attempt.passed else 'FAIL'})"
+
+        summary = f"""
+--- {vr.pair_name} Validation ---
+Initial Score: {vr.initial_scores.overall:.2f}
+Final Score: {vr.final_scores.overall:.2f}
+Passed: {vr.passed}
+Issues: {', '.join(vr.issues[:3])}
+Strengths: {', '.join(vr.strengths[:3])}{fix_info}
+"""
+        validation_summaries.append(summary)
+
+    # Build rankings summary
+    rankings_summary = ""
+    if stage2_rankings:
+        rankings_summary = "\n".join([
+            f"{r['model']}: {r['ranking'][:500]}..."
+            for r in stage2_rankings[:3]
+        ])
+
+    chairman_prompt = f"""You are the Chairman of an Enhanced LLM Council. Multiple AI model PAIRS have collaboratively refined responses through Creator-Critic iterations, then validated by a Tester agent.
+
+ORIGINAL QUESTION:
+{user_query}
+
+═══════════════════════════════════════════════════════════════════════════════
+STAGE 1: AGENT PAIR RESULTS
+{chr(10).join(pair_summaries)}
+
+═══════════════════════════════════════════════════════════════════════════════
+STAGE 2: TESTER VALIDATION
+Best Pair: {validation_results.best_pair}
+Best Score: {validation_results.best_score:.2f}
+All Passed: {validation_results.all_passed}
+Recommendation: {validation_results.recommendation}
+
+{chr(10).join(validation_summaries)}
+
+═══════════════════════════════════════════════════════════════════════════════
+STAGE 3: PEER RANKINGS SUMMARY
+{rankings_summary if rankings_summary else "No peer rankings available."}
+
+═══════════════════════════════════════════════════════════════════════════════
+
+As Chairman, synthesize all of this information into a SINGLE, COMPREHENSIVE, ACCURATE answer.
+
+Consider:
+1. Which pair produced the best response and why
+2. What the validation revealed about response quality
+3. Any issues that were identified and how they were resolved
+4. The consensus from peer rankings
+
+Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
+
+    messages = [{"role": "user", "content": chairman_prompt}]
+
+    response = await query_model(CHAIRMAN_MODEL, messages, timeout=180.0)
+
+    if response is None:
+        return {
+            "model": CHAIRMAN_MODEL,
+            "response": "Error: Unable to generate final synthesis."
+        }
+
+    return {
+        "model": CHAIRMAN_MODEL,
+        "response": response.get('content', '')
+    }

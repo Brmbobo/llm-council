@@ -3,6 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import StagePairs from './StagePairs';
+import StageValidation from './StageValidation';
 import { DocumentUpload } from './DocumentUpload';
 import { DocumentList } from './DocumentList';
 import './ChatInterface.css';
@@ -80,38 +82,70 @@ export default function ChatInterface({
                 <div className="assistant-message">
                   <div className="message-label">LLM Council</div>
 
-                  {/* Stage 1 */}
+                  {/* Enhanced Mode: Agent Pairs */}
+                  {msg.loading?.pairs && (
+                    <div className="stage-loading enhanced">
+                      <div className="spinner"></div>
+                      <span>Running Stage 1: Agent Pairs (Creator-Critic iterations)...</span>
+                      {msg.loading.pairs_progress && (
+                        <div className="progress-detail">
+                          {msg.loading.pairs_progress}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {msg.stage_pairs && <StagePairs pairs={msg.stage_pairs} />}
+
+                  {/* Enhanced Mode: Validation */}
+                  {msg.loading?.validation && (
+                    <div className="stage-loading enhanced">
+                      <div className="spinner"></div>
+                      <span>Running Stage 2: Tester Validation + Auto-Fix...</span>
+                    </div>
+                  )}
+                  {msg.stage_validation && <StageValidation validation={msg.stage_validation} />}
+
+                  {/* Traditional Mode: Stage 1 */}
                   {msg.loading?.stage1 && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
                       <span>Running Stage 1: Collecting individual responses...</span>
                     </div>
                   )}
-                  {msg.stage1 && <Stage1 responses={msg.stage1} />}
+                  {msg.stage1 && !msg.stage_pairs && <Stage1 responses={msg.stage1} />}
 
-                  {/* Stage 2 */}
+                  {/* Traditional/Enhanced Mode: Stage 2/3 Peer Rankings */}
                   {msg.loading?.stage2 && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
-                      <span>Running Stage 2: Peer rankings...</span>
+                      <span>Running Stage {msg.stage_pairs ? '3' : '2'}: Peer rankings...</span>
                     </div>
                   )}
-                  {msg.stage2 && (
+                  {msg.stage2 && !msg.stage_rankings && (
                     <Stage2
                       rankings={msg.stage2}
                       labelToModel={msg.metadata?.label_to_model}
                       aggregateRankings={msg.metadata?.aggregate_rankings}
                     />
                   )}
+                  {msg.stage_rankings && (
+                    <Stage2
+                      rankings={msg.stage_rankings}
+                      labelToModel={msg.metadata?.label_to_model}
+                      aggregateRankings={msg.metadata?.aggregate_rankings}
+                      stageNumber={3}
+                    />
+                  )}
 
-                  {/* Stage 3 */}
+                  {/* Traditional/Enhanced Mode: Final Synthesis */}
                   {msg.loading?.stage3 && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
-                      <span>Running Stage 3: Final synthesis...</span>
+                      <span>Running Stage {msg.stage_pairs ? '4' : '3'}: Final synthesis...</span>
                     </div>
                   )}
-                  {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
+                  {msg.stage3 && <Stage3 finalResponse={msg.stage3} stageNumber={msg.stage_pairs ? 4 : 3} />}
+                  {msg.stage_synthesis && <Stage3 finalResponse={msg.stage_synthesis} stageNumber={4} />}
                 </div>
               )}
             </div>
