@@ -4,16 +4,41 @@ import ChatInterface from './components/ChatInterface';
 import { api } from './api';
 import './App.css';
 
+// Default active roles
+const DEFAULT_ACTIVE_ROLES = [
+  { role_id: 'technical', custom_prompt: null },
+  { role_id: 'business', custom_prompt: null },
+  { role_id: 'pragmatism', custom_prompt: null }
+];
+
 function App() {
   const [conversations, setConversations] = useState([]);
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load conversations on mount
+  // Role and revision state
+  const [availableRoles, setAvailableRoles] = useState(null);
+  const [activeRoles, setActiveRoles] = useState(DEFAULT_ACTIVE_ROLES);
+  const [enableRevisions, setEnableRevisions] = useState(false);
+  const [customChairmanPrompt, setCustomChairmanPrompt] = useState(null);
+  const [defaultChairmanPrompt, setDefaultChairmanPrompt] = useState('');
+
+  // Load conversations and roles on mount
   useEffect(() => {
     loadConversations();
+    loadRoles();
   }, []);
+
+  const loadRoles = async () => {
+    try {
+      const data = await api.getRoles();
+      setAvailableRoles(data.roles);
+      setDefaultChairmanPrompt(data.default_chairman_prompt);
+    } catch (error) {
+      console.error('Failed to load roles:', error);
+    }
+  };
 
   // Load conversation details when selected
   useEffect(() => {
@@ -74,11 +99,13 @@ function App() {
         role: 'assistant',
         stage1: null,
         stage2: null,
+        stage2_5: null,
         stage3: null,
         metadata: null,
         loading: {
           stage1: false,
           stage2: false,
+          stage2_5: false,
           stage3: false,
         },
       };
@@ -89,8 +116,15 @@ function App() {
         messages: [...prev.messages, assistantMessage],
       }));
 
+      // Prepare options for API call
+      const options = {
+        activeRoles,
+        enableRevisions,
+        customChairmanPrompt,
+      };
+
       // Send message with streaming
-      await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
+      await api.sendMessageStream(currentConversationId, content, options, (eventType, event) => {
         switch (eventType) {
           case 'stage1_start':
             setCurrentConversation((prev) => {
@@ -127,6 +161,25 @@ function App() {
               lastMsg.stage2 = event.data;
               lastMsg.metadata = event.metadata;
               lastMsg.loading.stage2 = false;
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'stage2_5_start':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.loading.stage2_5 = true;
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'stage2_5_complete':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.stage2_5 = event.data;
+              lastMsg.loading.stage2_5 = false;
               return { ...prev, messages };
             });
             break;
@@ -193,6 +246,14 @@ function App() {
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
         isLoading={isLoading}
+        availableRoles={availableRoles}
+        activeRoles={activeRoles}
+        onRolesChange={setActiveRoles}
+        enableRevisions={enableRevisions}
+        onEnableRevisionsChange={setEnableRevisions}
+        customChairmanPrompt={customChairmanPrompt}
+        onChairmanPromptChange={setCustomChairmanPrompt}
+        defaultChairmanPrompt={defaultChairmanPrompt}
       />
     </div>
   );

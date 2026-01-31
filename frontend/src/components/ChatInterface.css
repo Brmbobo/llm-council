@@ -177,3 +177,31 @@
   border-top: none;
   background: transparent;
 }
+
+.revision-toggle {
+  margin-bottom: 12px;
+}
+
+.revision-toggle .toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #24292f;
+}
+
+.revision-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.revision-toggle .toggle-text {
+  font-weight: 500;
+}
+
+.revision-toggle .toggle-hint {
+  font-size: 12px;
+  color: #656d76;
+}

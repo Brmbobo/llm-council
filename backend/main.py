@@ -4,13 +4,23 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import uuid
 import json
 import asyncio
 
 from . import storage
-from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .council import (
+    run_full_council,
+    run_enhanced_council,
+    generate_conversation_title,
+    stage1_collect_responses,
+    stage2_collect_rankings,
+    stage2_5_collect_revisions,
+    stage3_synthesize_final,
+    calculate_aggregate_rankings
+)
+from .config import COUNCIL_ROLES, DEFAULT_CHAIRMAN_PROMPT
 from .routers.documents import router as documents_router
 
 app = FastAPI(title="LLM Council API")
@@ -21,7 +31,7 @@ app.include_router(documents_router)
 # Enable CORS for local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,9 +43,18 @@ class CreateConversationRequest(BaseModel):
     pass
 
 
+class RoleConfig(BaseModel):
+    """Configuration for a single role."""
+    role_id: str
+    custom_prompt: Optional[str] = None
+
+
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
+    active_roles: Optional[List[RoleConfig]] = None
+    enable_revisions: bool = False
+    custom_chairman_prompt: Optional[str] = None
 
 
 class ConversationMetadata(BaseModel):
@@ -58,6 +77,15 @@ class Conversation(BaseModel):
 async def root():
     """Health check endpoint."""
     return {"status": "ok", "service": "LLM Council API"}
+
+
+@app.get("/api/roles")
+async def get_roles():
+    """Get available council roles with their default prompts."""
+    return {
+        "roles": COUNCIL_ROLES,
+        "default_chairman_prompt": DEFAULT_CHAIRMAN_PROMPT
+    }
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
@@ -86,7 +114,7 @@ async def get_conversation(conversation_id: str):
 @app.post("/api/conversations/{conversation_id}/message")
 async def send_message(conversation_id: str, request: SendMessageRequest):
     """
-    Send a message and run the 3-stage council process.
+    Send a message and run the council process.
     Returns the complete response with all stages.
     """
     # Check if conversation exists
@@ -105,10 +133,21 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         title = await generate_conversation_title(request.content)
         storage.update_conversation_title(conversation_id, title)
 
-    # Run the 3-stage council process (with document context)
-    stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
+    # Convert RoleConfig objects to dicts for council functions
+    role_configs = None
+    if request.active_roles:
+        role_configs = [
+            {"role_id": r.role_id, "custom_prompt": r.custom_prompt}
+            for r in request.active_roles
+        ]
+
+    # Run the council process with new parameters
+    stage1_results, stage2_results, stage2_5_results, stage3_result, metadata = await run_full_council(
         request.content,
-        conversation_id
+        conversation_id,
+        role_configs=role_configs,
+        enable_revisions=request.enable_revisions,
+        custom_chairman_prompt=request.custom_chairman_prompt
     )
 
     # Add assistant message with all stages
@@ -120,18 +159,24 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     )
 
     # Return the complete response with metadata
-    return {
+    response = {
         "stage1": stage1_results,
         "stage2": stage2_results,
         "stage3": stage3_result,
         "metadata": metadata
     }
 
+    # Include stage2_5 if revisions were enabled
+    if stage2_5_results:
+        response["stage2_5"] = stage2_5_results
+
+    return response
+
 
 @app.post("/api/conversations/{conversation_id}/message/stream")
 async def send_message_stream(conversation_id: str, request: SendMessageRequest):
     """
-    Send a message and stream the 3-stage council process.
+    Send a message and stream the council process.
     Returns Server-Sent Events as each stage completes.
     """
     # Check if conversation exists
@@ -141,6 +186,14 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
+
+    # Convert RoleConfig objects to dicts for council functions
+    role_configs = None
+    if request.active_roles:
+        role_configs = [
+            {"role_id": r.role_id, "custom_prompt": r.custom_prompt}
+            for r in request.active_roles
+        ]
 
     async def event_generator():
         try:
@@ -152,9 +205,13 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             if is_first_message:
                 title_task = asyncio.create_task(generate_conversation_title(request.content))
 
-            # Stage 1: Collect responses (with document context)
+            # Stage 1: Collect responses (with document context and roles)
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(request.content, conversation_id)
+            stage1_results = await stage1_collect_responses(
+                request.content,
+                conversation_id,
+                role_configs=role_configs
+            )
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
             # Stage 2: Collect rankings
@@ -163,9 +220,27 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
 
+            # Stage 2.5: Revisions (optional)
+            stage2_5_results = None
+            if request.enable_revisions:
+                yield f"data: {json.dumps({'type': 'stage2_5_start'})}\n\n"
+                stage2_5_results = await stage2_5_collect_revisions(
+                    request.content,
+                    stage1_results,
+                    stage2_results,
+                    label_to_model
+                )
+                yield f"data: {json.dumps({'type': 'stage2_5_complete', 'data': stage2_5_results})}\n\n"
+
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
+            stage3_result = await stage3_synthesize_final(
+                request.content,
+                stage1_results,
+                stage2_results,
+                stage2_5_results=stage2_5_results,
+                custom_chairman_prompt=request.custom_chairman_prompt
+            )
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             # Wait for title generation if it was started

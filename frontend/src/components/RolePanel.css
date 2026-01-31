@@ -1,0 +1,151 @@
+.role-panel {
+  background: #f8f9fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.role-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.role-panel-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: #24292f;
+}
+
+.role-count {
+  font-size: 12px;
+  color: #656d76;
+}
+
+.role-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.role-chip-container {
+  display: inline-flex;
+}
+
+.role-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #656d76;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.role-chip:hover {
+  border-color: #4a90e2;
+  color: #4a90e2;
+}
+
+.role-chip.active {
+  background: #4a90e2;
+  border-color: #4a90e2;
+  color: white;
+}
+
+.role-chip.active:hover {
+  background: #3a7bc8;
+}
+
+.role-chip.expanded {
+  border-radius: 16px 16px 0 0;
+}
+
+.role-name {
+  white-space: nowrap;
+}
+
+.customized-indicator {
+  color: #ffc107;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.role-chip.active .customized-indicator {
+  color: #ffd54f;
+}
+
+.role-edit-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.role-edit-btn:hover {
+  opacity: 1;
+}
+
+.prompt-editor {
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 12px;
+  margin-top: -1px;
+}
+
+.prompt-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.prompt-editor-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #24292f;
+}
+
+.reset-btn {
+  background: none;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #656d76;
+  cursor: pointer;
+}
+
+.reset-btn:hover {
+  border-color: #4a90e2;
+  color: #4a90e2;
+}
+
+.prompt-textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.prompt-textarea:focus {
+  outline: none;
+  border-color: #4a90e2;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}

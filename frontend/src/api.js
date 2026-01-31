@@ -6,6 +6,17 @@ const API_BASE = 'http://localhost:8001';
 
 export const api = {
   /**
+   * Get available council roles and default prompts.
+   */
+  async getRoles() {
+    const response = await fetch(`${API_BASE}/api/roles`);
+    if (!response.ok) {
+      throw new Error('Failed to get roles');
+    }
+    return response.json();
+  },
+
+  /**
    * List all conversations.
    */
   async listConversations() {
@@ -70,10 +81,35 @@ export const api = {
    * Send a message and receive streaming updates.
    * @param {string} conversationId - The conversation ID
    * @param {string} content - The message content
+   * @param {object} options - Optional parameters
+   * @param {Array} options.activeRoles - Active roles with optional custom prompts
+   * @param {boolean} options.enableRevisions - Whether to enable Stage 2.5 revisions
+   * @param {string} options.customChairmanPrompt - Custom chairman prompt
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent) {
+  async sendMessageStream(conversationId, content, options, onEvent) {
+    const {
+      activeRoles = null,
+      enableRevisions = false,
+      customChairmanPrompt = null
+    } = options || {};
+
+    const body = {
+      content,
+      enable_revisions: enableRevisions,
+    };
+
+    // Only include if we have active roles
+    if (activeRoles && activeRoles.length > 0) {
+      body.active_roles = activeRoles;
+    }
+
+    // Only include if custom prompt is set
+    if (customChairmanPrompt) {
+      body.custom_chairman_prompt = customChairmanPrompt;
+    }
+
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
@@ -81,7 +117,7 @@ export const api = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(body),
       }
     );
 

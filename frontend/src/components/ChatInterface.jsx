@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
+import Stage2_5 from './Stage2_5';
 import Stage3 from './Stage3';
+import RolePanel from './RolePanel';
+import ChairmanPromptEditor from './ChairmanPromptEditor';
 import { DocumentUpload } from './DocumentUpload';
 import { DocumentList } from './DocumentList';
 import './ChatInterface.css';
@@ -11,6 +14,14 @@ export default function ChatInterface({
   conversation,
   onSendMessage,
   isLoading,
+  availableRoles,
+  activeRoles,
+  onRolesChange,
+  enableRevisions,
+  onEnableRevisionsChange,
+  customChairmanPrompt,
+  onChairmanPromptChange,
+  defaultChairmanPrompt,
 }) {
   const [input, setInput] = useState('');
   const [documentRefresh, setDocumentRefresh] = useState(0);
@@ -104,6 +115,20 @@ export default function ChatInterface({
                     />
                   )}
 
+                  {/* Stage 2.5 (Revisions) */}
+                  {msg.loading?.stage2_5 && (
+                    <div className="stage-loading">
+                      <div className="spinner"></div>
+                      <span>Running Stage 2.5: Revising responses...</span>
+                    </div>
+                  )}
+                  {msg.stage2_5 && (
+                    <Stage2_5
+                      revisions={msg.stage2_5}
+                      labelToModel={msg.metadata?.label_to_model}
+                    />
+                  )}
+
                   {/* Stage 3 */}
                   {msg.loading?.stage3 && (
                     <div className="stage-loading">
@@ -140,6 +165,35 @@ export default function ChatInterface({
               onUploadComplete={handleDocumentUpload}
               disabled={isLoading}
             />
+          </div>
+
+          {/* Role Panel */}
+          <RolePanel
+            availableRoles={availableRoles}
+            activeRoles={activeRoles}
+            onRolesChange={onRolesChange}
+          />
+
+          {/* Chairman Prompt Editor */}
+          <ChairmanPromptEditor
+            defaultPrompt={defaultChairmanPrompt}
+            customPrompt={customChairmanPrompt}
+            onPromptChange={onChairmanPromptChange}
+          />
+
+          {/* Revision Toggle */}
+          <div className="revision-toggle">
+            <label className="toggle-label">
+              <input
+                type="checkbox"
+                checked={enableRevisions}
+                onChange={(e) => onEnableRevisionsChange(e.target.checked)}
+              />
+              <span className="toggle-text">Enable Stage 2.5 Revisions</span>
+              <span className="toggle-hint">
+                (Models revise answers based on peer feedback)
+              </span>
+            </label>
           </div>
 
           <form className="input-form" onSubmit={handleSubmit}>
