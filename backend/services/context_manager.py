@@ -10,11 +10,10 @@ Token Counting Strategy:
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 import tiktoken
 
-from ..config import MAX_CONTEXT_TOKENS, CONTEXT_INJECTION_TEMPLATE
+from ..config import CONTEXT_INJECTION_TEMPLATE, MAX_CONTEXT_TOKENS
 
 
 @dataclass
@@ -33,7 +32,7 @@ class InjectionResult:
     total_tokens: int
     documents_included: int
     documents_truncated: int
-    overflow_warning: Optional[str] = None
+    overflow_warning: str | None = None
 
 
 class ContextManager:
@@ -61,7 +60,7 @@ class ContextManager:
 
     def prepare_context(
         self,
-        documents: List[DocumentContext],
+        documents: list[DocumentContext],
         max_tokens: int = MAX_CONTEXT_TOKENS,
     ) -> InjectionResult:
         """

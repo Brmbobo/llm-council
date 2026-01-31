@@ -2,7 +2,6 @@
 
 import os
 from pathlib import Path
-from typing import Set
 
 from dotenv import load_dotenv
 
@@ -42,7 +41,7 @@ MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
 MAX_FILES_PER_CONVERSATION: int = 10
 
 # Allowed Types (extension -> MIME types)
-ALLOWED_FILE_TYPES: dict[str, Set[str]] = {
+ALLOWED_FILE_TYPES: dict[str, set[str]] = {
     ".txt": {"text/plain"},
     ".md": {"text/plain", "text/markdown", "text/x-markdown"},
     ".pdf": {"application/pdf"},

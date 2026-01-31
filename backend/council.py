@@ -1,24 +1,24 @@
 """3-stage LLM Council orchestration."""
 
-from typing import List, Dict, Any, Tuple, Optional
-from .openrouter import query_models_parallel, query_model
+from typing import Any
+
 from .config import (
-    COUNCIL_MODELS,
+    AGENT_PAIRS,
     CHAIRMAN_MODEL,
+    COUNCIL_MODELS,
     COUNCIL_ROLES,
     DEFAULT_CHAIRMAN_PROMPT,
-    DEFAULT_ACTIVE_ROLES,
-    AGENT_PAIRS
 )
-from .services.document_storage import DocumentStorage
+from .openrouter import query_model, query_models_parallel
 from .services.context_manager import ContextManager, DocumentContext
+from .services.document_storage import DocumentStorage
 
 # Service instances for document context
 _document_storage = DocumentStorage()
 _context_manager = ContextManager()
 
 
-async def _get_document_context(conversation_id: Optional[str]) -> str:
+async def _get_document_context(conversation_id: str | None) -> str:
     """
     Load documents for a conversation and prepare context for injection.
 
@@ -69,9 +69,9 @@ async def _get_document_context(conversation_id: Optional[str]) -> str:
 
 async def stage1_collect_responses(
     user_query: str,
-    conversation_id: Optional[str] = None,
-    role_configs: Optional[List[Dict[str, Any]]] = None
-) -> List[Dict[str, Any]]:
+    conversation_id: str | None = None,
+    role_configs: list[dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
@@ -148,7 +148,7 @@ async def stage1_collect_responses(
 
         # Format results
         stage1_results = []
-        for metadata, response in zip(task_metadata, responses):
+        for metadata, response in zip(task_metadata, responses, strict=False):
             if response is not None:
                 stage1_results.append({
                     "model": metadata["model"],
@@ -182,8 +182,8 @@ async def stage1_collect_responses(
 
 async def stage2_collect_rankings(
     user_query: str,
-    stage1_results: List[Dict[str, Any]]
-) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+    stage1_results: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
     """
     Stage 2: Each model ranks the anonymized responses.
 
@@ -200,13 +200,13 @@ async def stage2_collect_rankings(
     # Create mapping from label to model name
     label_to_model = {
         f"Response {label}": result['model']
-        for label, result in zip(labels, stage1_results)
+        for label, result in zip(labels, stage1_results, strict=False)
     }
 
     # Build the ranking prompt
     responses_text = "\n\n".join([
         f"Response {label}:\n{result['response']}"
-        for label, result in zip(labels, stage1_results)
+        for label, result in zip(labels, stage1_results, strict=False)
     ])
 
     ranking_prompt = f"""You are evaluating different responses to the following question:
@@ -261,7 +261,7 @@ Now provide your evaluation and ranking:"""
 
 
 def _extract_feedback_for_label(
-    stage2_results: List[Dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
     target_label: str
 ) -> str:
     """
@@ -297,10 +297,10 @@ def _extract_feedback_for_label(
 
 async def stage2_5_collect_revisions(
     user_query: str,
-    stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]],
-    label_to_model: Dict[str, str]
-) -> List[Dict[str, Any]]:
+    stage1_results: list[dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
+    label_to_model: dict[str, str]
+) -> list[dict[str, Any]]:
     """
     Stage 2.5: Each model revises its response based on peer feedback.
 
@@ -379,7 +379,7 @@ Provide your complete revised response:"""
 
     # Format results
     stage2_5_results = []
-    for metadata, response in zip(task_metadata, responses):
+    for metadata, response in zip(task_metadata, responses, strict=False):
         if response is not None:
             stage2_5_results.append({
                 "model": metadata["model"],
@@ -395,11 +395,11 @@ Provide your complete revised response:"""
 
 async def stage3_synthesize_final(
     user_query: str,
-    stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]],
-    stage2_5_results: Optional[List[Dict[str, Any]]] = None,
-    custom_chairman_prompt: Optional[str] = None
-) -> Dict[str, Any]:
+    stage1_results: list[dict[str, Any]],
+    stage2_results: list[dict[str, Any]],
+    stage2_5_results: list[dict[str, Any]] | None = None,
+    custom_chairman_prompt: str | None = None
+) -> dict[str, Any]:
     """
     Stage 3: Chairman synthesizes final response.
 
@@ -473,7 +473,7 @@ Please provide your synthesis:"""
     }
 
 
-def parse_ranking_from_text(ranking_text: str) -> List[str]:
+def parse_ranking_from_text(ranking_text: str) -> list[str]:
     """
     Parse the FINAL RANKING section from the model's response.
 
@@ -508,9 +508,9 @@ def parse_ranking_from_text(ranking_text: str) -> List[str]:
 
 
 def calculate_aggregate_rankings(
-    stage2_results: List[Dict[str, Any]],
-    label_to_model: Dict[str, str]
-) -> List[Dict[str, Any]]:
+    stage2_results: list[dict[str, Any]],
+    label_to_model: dict[str, str]
+) -> list[dict[str, Any]]:
     """
     Calculate aggregate rankings across all models.
 
@@ -594,11 +594,11 @@ Title:"""
 
 async def run_full_council(
     user_query: str,
-    conversation_id: Optional[str] = None,
-    role_configs: Optional[List[Dict[str, Any]]] = None,
+    conversation_id: str | None = None,
+    role_configs: list[dict[str, Any]] | None = None,
     enable_revisions: bool = False,
-    custom_chairman_prompt: Optional[str] = None
-) -> Tuple[List, List, Optional[List], Dict, Dict]:
+    custom_chairman_prompt: str | None = None
+) -> tuple[list, list, list | None, dict, dict]:
     """
     Run the complete council process (3 or 4 stages depending on revisions).
 
@@ -666,9 +666,9 @@ async def run_full_council(
 
 async def run_enhanced_council(
     user_query: str,
-    conversation_id: Optional[str] = None,
-    on_progress: Optional[callable] = None
-) -> Dict[str, Any]:
+    conversation_id: str | None = None,
+    on_progress: callable | None = None
+) -> dict[str, Any]:
     """
     Run the enhanced 4-stage council process with Agent Pairs.
 
@@ -685,8 +685,8 @@ async def run_enhanced_council(
     Returns:
         Dict with all stages and metadata
     """
-    from .agent_pair import run_pairs_parallel, pair_result_to_dict
-    from .validator import validate_all_pairs, aggregated_validation_to_dict
+    from .agent_pair import pair_result_to_dict, run_pairs_parallel
+    from .validator import aggregated_validation_to_dict, validate_all_pairs
 
     # Get document context
     document_context = await _get_document_context(conversation_id)
@@ -828,10 +828,10 @@ async def run_enhanced_council(
 
 async def _synthesize_with_pair_context(
     user_query: str,
-    pair_results: List,
+    pair_results: list,
     validation_results,
-    stage2_rankings: List[Dict[str, Any]]
-) -> Dict[str, Any]:
+    stage2_rankings: list[dict[str, Any]]
+) -> dict[str, Any]:
     """Chairman synthesis with full pair context including iterations and fixes."""
     pair_summaries = []
     for pr in pair_results:

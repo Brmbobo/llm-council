@@ -12,11 +12,10 @@ Storage Structure:
             └── abc123_report.txt  # Extracted text cache
 """
 
-from dataclasses import dataclass, asdict
+import json
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
-import json
 
 import aiofiles
 
@@ -36,7 +35,7 @@ class DocumentMetadata:
     char_count: int
     token_count: int
     page_count: int
-    warnings: List[str]
+    warnings: list[str]
 
 
 class DocumentStorageError(Exception):
@@ -82,7 +81,7 @@ class DocumentStorage:
         extracted_text: str,
         token_count: int,
         page_count: int,
-        warnings: List[str],
+        warnings: list[str],
     ) -> DocumentMetadata:
         """
         Save document and its extracted text.
@@ -149,13 +148,13 @@ class DocumentStorage:
     async def list_documents(
         self,
         conversation_id: str
-    ) -> List[DocumentMetadata]:
+    ) -> list[DocumentMetadata]:
         """List all documents for conversation."""
         metadata_path = self._metadata_path(conversation_id)
         if not metadata_path.exists():
             return []
 
-        async with aiofiles.open(metadata_path, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(metadata_path, encoding='utf-8') as f:
             content = await f.read()
             data = json.loads(content)
 
@@ -165,7 +164,7 @@ class DocumentStorage:
         self,
         conversation_id: str,
         document_id: str
-    ) -> Optional[DocumentMetadata]:
+    ) -> DocumentMetadata | None:
         """Get a specific document's metadata."""
         docs = await self.list_documents(conversation_id)
         return next((d for d in docs if d.id == document_id), None)
@@ -174,7 +173,7 @@ class DocumentStorage:
         self,
         conversation_id: str,
         document_id: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get extracted text for document."""
         doc = await self.get_document(conversation_id, document_id)
         if not doc:
@@ -187,7 +186,7 @@ class DocumentStorage:
         if not text_path.exists():
             return None
 
-        async with aiofiles.open(text_path, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(text_path, encoding='utf-8') as f:
             return await f.read()
 
     async def delete_document(
@@ -228,7 +227,7 @@ class DocumentStorage:
         metadata_path = self._metadata_path(conversation_id)
 
         if metadata_path.exists():
-            async with aiofiles.open(metadata_path, 'r', encoding='utf-8') as f:
+            async with aiofiles.open(metadata_path, encoding='utf-8') as f:
                 content = await f.read()
                 data = json.loads(content)
         else:
@@ -254,7 +253,7 @@ class DocumentStorage:
         if not metadata_path.exists():
             return
 
-        async with aiofiles.open(metadata_path, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(metadata_path, encoding='utf-8') as f:
             content = await f.read()
             data = json.loads(content)
 

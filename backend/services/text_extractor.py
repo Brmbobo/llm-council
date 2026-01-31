@@ -9,24 +9,23 @@ Supported formats:
 - MD: Pass-through with normalization
 """
 
-from dataclasses import dataclass, field
-from typing import Optional, List
 import re
+from dataclasses import dataclass, field
 
-import fitz  # PyMuPDF
 import chardet
+import fitz  # PyMuPDF
 
 
 @dataclass
 class ExtractionResult:
     """Result of text extraction."""
     success: bool
-    text: Optional[str] = None
+    text: str | None = None
     char_count: int = 0
     page_count: int = 0
-    error_code: Optional[str] = None
-    error_message: Optional[str] = None
-    warnings: List[str] = field(default_factory=list)
+    error_code: str | None = None
+    error_message: str | None = None
+    warnings: list[str] = field(default_factory=list)
 
 
 class TextExtractionError(Exception):

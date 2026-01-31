@@ -4,18 +4,16 @@ Documents API Router
 Handles document upload, listing, and deletion for conversations.
 """
 
-from dataclasses import asdict
-from typing import List
 import uuid
+from dataclasses import asdict
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from ..services.context_manager import ContextManager
+from ..services.document_storage import DocumentStorage, DocumentStorageError
 from ..services.file_validator import FileValidator
 from ..services.text_extractor import TextExtractor
-from ..services.document_storage import DocumentStorage, DocumentStorageError
-from ..services.context_manager import ContextManager
-
 
 router = APIRouter(
     prefix="/api/conversations/{conversation_id}/documents",
@@ -36,12 +34,12 @@ class DocumentResponse(BaseModel):
     size_bytes: int
     token_count: int
     page_count: int
-    warnings: List[str]
+    warnings: list[str]
 
 
 class DocumentListResponse(BaseModel):
     """Response model for document listing."""
-    documents: List[dict]
+    documents: list[dict]
     total_tokens: int
 
 
@@ -118,7 +116,7 @@ async def upload_document(
                 "code": e.code,
                 "message": e.message
             }
-        )
+        ) from e
 
     return DocumentResponse(
         id=metadata.id,

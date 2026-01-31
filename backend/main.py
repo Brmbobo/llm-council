@@ -1,26 +1,26 @@
 """FastAPI backend for LLM Council."""
 
+import asyncio
+import json
+import uuid
+from typing import Any
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-import uuid
-import json
-import asyncio
 
 from . import storage
-from .council import (
-    run_full_council,
-    run_enhanced_council,
-    generate_conversation_title,
-    stage1_collect_responses,
-    stage2_collect_rankings,
-    stage2_5_collect_revisions,
-    stage3_synthesize_final,
-    calculate_aggregate_rankings
-)
 from .config import COUNCIL_ROLES, DEFAULT_CHAIRMAN_PROMPT
+from .council import (
+    calculate_aggregate_rankings,
+    generate_conversation_title,
+    run_full_council,
+    stage1_collect_responses,
+    stage2_5_collect_revisions,
+    stage2_collect_rankings,
+    stage3_synthesize_final,
+)
 from .routers.documents import router as documents_router
 
 app = FastAPI(title="LLM Council API")
@@ -46,15 +46,15 @@ class CreateConversationRequest(BaseModel):
 class RoleConfig(BaseModel):
     """Configuration for a single role."""
     role_id: str
-    custom_prompt: Optional[str] = None
+    custom_prompt: str | None = None
 
 
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
-    active_roles: Optional[List[RoleConfig]] = None
+    active_roles: list[RoleConfig] | None = None
     enable_revisions: bool = False
-    custom_chairman_prompt: Optional[str] = None
+    custom_chairman_prompt: str | None = None
 
 
 class ConversationMetadata(BaseModel):
@@ -70,7 +70,7 @@ class Conversation(BaseModel):
     id: str
     created_at: str
     title: str
-    messages: List[Dict[str, Any]]
+    messages: list[dict[str, Any]]
 
 
 @app.get("/")
@@ -88,7 +88,7 @@ async def get_roles():
     }
 
 
-@app.get("/api/conversations", response_model=List[ConversationMetadata])
+@app.get("/api/conversations", response_model=list[ConversationMetadata])
 async def list_conversations():
     """List all conversations (metadata only)."""
     return storage.list_conversations()

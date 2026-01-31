@@ -11,11 +11,10 @@ Security Layers:
 5. Filename sanitization (path traversal prevention)
 """
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
 import re
 import uuid
+from dataclasses import dataclass
+from pathlib import Path
 
 import magic
 
@@ -30,10 +29,10 @@ from ..config import (
 class ValidationResult:
     """Immutable validation outcome."""
     is_valid: bool
-    error_code: Optional[str] = None
-    error_message: Optional[str] = None
-    sanitized_filename: Optional[str] = None
-    detected_mime: Optional[str] = None
+    error_code: str | None = None
+    error_message: str | None = None
+    sanitized_filename: str | None = None
+    detected_mime: str | None = None
 
 
 class FileValidationError(Exception):
@@ -65,7 +64,7 @@ class FileValidator:
         self,
         file_content: bytes,
         original_filename: str,
-        declared_content_type: Optional[str] = None,
+        declared_content_type: str | None = None,
     ) -> ValidationResult:
         """
         Validate uploaded file through all security layers.

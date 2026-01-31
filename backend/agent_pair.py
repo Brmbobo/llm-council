@@ -16,7 +16,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .config import (
     CONVERGENCE_THRESHOLD,
@@ -46,7 +46,7 @@ class RefinementIteration:
     status: IterationStatus
     creator_time_ms: int = 0
     critic_time_ms: int = 0
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 @dataclass
@@ -55,13 +55,13 @@ class PairResult:
     pair_name: str
     creator_model: str
     critic_model: str
-    iterations: List[RefinementIteration] = field(default_factory=list)
+    iterations: list[RefinementIteration] = field(default_factory=list)
     final_response: str = ""
     final_score: float = 0.0
     total_iterations: int = 0
     converged: bool = False
     total_time_ms: int = 0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -131,7 +131,7 @@ Be rigorous but fair. A score of 0.95+ means the response is excellent with only
 # CORE FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def parse_critic_response(response_text: str) -> Tuple[float, str, Dict[str, Any]]:
+def parse_critic_response(response_text: str) -> tuple[float, str, dict[str, Any]]:
     """
     Parse critic's JSON response to extract score and feedback.
 
@@ -140,7 +140,6 @@ def parse_critic_response(response_text: str) -> Tuple[float, str, Dict[str, Any
     """
     # Default values
     default_score = 0.5
-    default_feedback = response_text
     default_data = {"score": default_score, "detailed_feedback": response_text}
 
     if not response_text:
@@ -193,11 +192,11 @@ async def run_creator(
     model: str,
     query: str,
     context: str = "",
-    previous_response: Optional[str] = None,
-    previous_feedback: Optional[str] = None,
-    previous_score: Optional[float] = None,
+    previous_response: str | None = None,
+    previous_feedback: str | None = None,
+    previous_score: float | None = None,
     timeout_ms: int = CREATOR_TIMEOUT_MS
-) -> Tuple[Optional[str], int]:
+) -> tuple[str | None, int]:
     """
     Generate response using Creator model.
 
@@ -250,7 +249,7 @@ async def run_critic(
     query: str,
     response: str,
     timeout_ms: int = CRITIC_TIMEOUT_MS
-) -> Tuple[float, str, Dict[str, Any], int]:
+) -> tuple[float, str, dict[str, Any], int]:
     """
     Evaluate response using Critic model.
 
@@ -284,12 +283,12 @@ async def run_critic(
 
 
 async def run_single_pair(
-    pair_config: Dict[str, str],
+    pair_config: dict[str, str],
     query: str,
     context: str = "",
     max_iterations: int = MAX_REFINEMENT_ITERATIONS,
     convergence_threshold: float = CONVERGENCE_THRESHOLD,
-    on_iteration: Optional[callable] = None
+    on_iteration: callable | None = None
 ) -> PairResult:
     """
     Run complete Creator-Critic loop for one pair.
@@ -395,11 +394,11 @@ async def run_single_pair(
 
 
 async def run_pairs_parallel(
-    pairs: List[Dict[str, str]],
+    pairs: list[dict[str, str]],
     query: str,
     context: str = "",
-    on_iteration: Optional[callable] = None
-) -> List[PairResult]:
+    on_iteration: callable | None = None
+) -> list[PairResult]:
     """
     Run multiple pairs in parallel using asyncio.gather().
 
@@ -460,7 +459,7 @@ async def run_pairs_parallel(
 # SERIALIZATION HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def iteration_to_dict(iteration: RefinementIteration) -> Dict[str, Any]:
+def iteration_to_dict(iteration: RefinementIteration) -> dict[str, Any]:
     """Convert RefinementIteration to serializable dict."""
     return {
         "iteration_number": iteration.iteration_number,
@@ -474,7 +473,7 @@ def iteration_to_dict(iteration: RefinementIteration) -> Dict[str, Any]:
     }
 
 
-def pair_result_to_dict(result: PairResult) -> Dict[str, Any]:
+def pair_result_to_dict(result: PairResult) -> dict[str, Any]:
     """Convert PairResult to serializable dict."""
     return {
         "pair_name": result.pair_name,

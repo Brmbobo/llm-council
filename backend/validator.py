@@ -10,20 +10,19 @@ This module implements the validation phase where:
 The auto-fix loop is independent of the initial Creator-Critic refinement.
 """
 
-import asyncio
 import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from .agent_pair import PairResult, run_creator, run_critic
+from .agent_pair import PairResult, run_critic
 from .config import (
     AUTO_FIX_ON_VALIDATION_FAIL,
+    CONVERGENCE_THRESHOLD,
     MAX_VALIDATION_RETRIES,
     TESTER_MODEL,
     TESTER_TIMEOUT_MS,
-    CONVERGENCE_THRESHOLD,
 )
 from .openrouter import query_model
 
@@ -57,10 +56,10 @@ class ValidationResult:
     passed: bool
     initial_scores: TestScores
     final_scores: TestScores
-    issues: List[str] = field(default_factory=list)
-    strengths: List[str] = field(default_factory=list)
+    issues: list[str] = field(default_factory=list)
+    strengths: list[str] = field(default_factory=list)
     raw_feedback: str = ""
-    auto_fix_attempts: List[AutoFixAttempt] = field(default_factory=list)
+    auto_fix_attempts: list[AutoFixAttempt] = field(default_factory=list)
     final_response: str = ""
     total_time_ms: int = 0
 
@@ -68,7 +67,7 @@ class ValidationResult:
 @dataclass
 class AggregatedValidation:
     """Aggregated validation across all pairs."""
-    results: List[ValidationResult] = field(default_factory=list)
+    results: list[ValidationResult] = field(default_factory=list)
     best_pair: str = ""
     best_score: float = 0.0
     all_passed: bool = False
@@ -148,7 +147,7 @@ Focus specifically on fixing the identified issues."""
 # PARSING FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def parse_tester_response(response_text: str) -> Tuple[TestScores, bool, List[str], List[str], str]:
+def parse_tester_response(response_text: str) -> tuple[TestScores, bool, list[str], list[str], str]:
     """
     Parse Tester's JSON response.
 
@@ -205,7 +204,7 @@ async def run_tester(
     query: str,
     response: str,
     timeout_ms: int = TESTER_TIMEOUT_MS
-) -> Tuple[TestScores, bool, List[str], List[str], str, int]:
+) -> tuple[TestScores, bool, list[str], list[str], str, int]:
     """
     Run Tester validation on a response.
 
@@ -233,14 +232,14 @@ async def run_tester(
 
 
 async def auto_fix_with_feedback(
-    pair_config: Dict[str, str],
+    pair_config: dict[str, str],
     query: str,
     original_response: str,
     tester_feedback: str,
-    issues: List[str],
+    issues: list[str],
     tester_score: float,
     max_retries: int = MAX_VALIDATION_RETRIES
-) -> Tuple[str, List[AutoFixAttempt], float]:
+) -> tuple[str, list[AutoFixAttempt], float]:
     """
     Auto-fix loop when Tester validation fails.
 
@@ -288,7 +287,6 @@ async def auto_fix_with_feedback(
         creator_fix = fix_result["content"]
 
         # Run Critic recheck on fix
-        from .agent_pair import run_critic
         critic_score, _, _, _ = await run_critic(
             model=pair_config["critic"],
             query=query,
@@ -329,7 +327,7 @@ async def auto_fix_with_feedback(
 async def validate_single_pair(
     query: str,
     pair_result: PairResult,
-    on_progress: Optional[callable] = None
+    on_progress: callable | None = None
 ) -> ValidationResult:
     """
     Validate a single pair's result with auto-fix if needed.
@@ -409,8 +407,8 @@ async def validate_single_pair(
 
 async def validate_all_pairs(
     query: str,
-    pair_results: List[PairResult],
-    on_progress: Optional[callable] = None
+    pair_results: list[PairResult],
+    on_progress: callable | None = None
 ) -> AggregatedValidation:
     """
     Validate all pair results and determine best.
@@ -460,7 +458,7 @@ async def validate_all_pairs(
 # SERIALIZATION HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def test_scores_to_dict(scores: TestScores) -> Dict[str, float]:
+def test_scores_to_dict(scores: TestScores) -> dict[str, float]:
     """Convert TestScores to serializable dict."""
     return {
         "accuracy": scores.accuracy,
@@ -471,7 +469,7 @@ def test_scores_to_dict(scores: TestScores) -> Dict[str, float]:
     }
 
 
-def auto_fix_attempt_to_dict(attempt: AutoFixAttempt) -> Dict[str, Any]:
+def auto_fix_attempt_to_dict(attempt: AutoFixAttempt) -> dict[str, Any]:
     """Convert AutoFixAttempt to serializable dict."""
     return {
         "attempt_number": attempt.attempt_number,
@@ -484,7 +482,7 @@ def auto_fix_attempt_to_dict(attempt: AutoFixAttempt) -> Dict[str, Any]:
     }
 
 
-def validation_result_to_dict(result: ValidationResult) -> Dict[str, Any]:
+def validation_result_to_dict(result: ValidationResult) -> dict[str, Any]:
     """Convert ValidationResult to serializable dict."""
     return {
         "pair_name": result.pair_name,
@@ -500,7 +498,7 @@ def validation_result_to_dict(result: ValidationResult) -> Dict[str, Any]:
     }
 
 
-def aggregated_validation_to_dict(agg: AggregatedValidation) -> Dict[str, Any]:
+def aggregated_validation_to_dict(agg: AggregatedValidation) -> dict[str, Any]:
     """Convert AggregatedValidation to serializable dict."""
     return {
         "results": [validation_result_to_dict(r) for r in agg.results],
